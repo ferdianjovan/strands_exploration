@@ -121,6 +121,7 @@ class PoissonProcesses(object):
             self._db.insert(msg, meta)
 
     def retrieve_from_mongo(self, meta=dict()):
+        retrieved = False
         query = {
             "duration.secs": self.time_window.secs
         }
@@ -144,6 +145,9 @@ class PoissonProcesses(object):
                 self.poisson[key].shape = log[0].shape
                 self.poisson[key].set_rate(log[0].rate)
         rospy.loginfo("%d new poisson distributions are obtained from db..." % len(logs))
+        if len(logs) > 0:
+            retrieved = True
+        return retrieved
 
 
 class PeriodicPoissonProcesses(PoissonProcesses):
@@ -175,7 +179,7 @@ class PeriodicPoissonProcesses(PoissonProcesses):
 
     def retrieve_from_mongo(self, meta=dict()):
         meta.update({'periodic_cycle': self.periodic_cycle})
-        super(PeriodicPoissonProcesses, self).retrieve_from_mongo(meta)
+        return super(PeriodicPoissonProcesses, self).retrieve_from_mongo(meta)
 
     def retrieve(self, start_time, end_time, use_upper_confidence=False, scale=False):
         # convert start_time and end_time to the closest time range (in minutes)

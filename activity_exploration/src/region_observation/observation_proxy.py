@@ -55,6 +55,7 @@ class RegionObservationProxy(object):
         }
         if roi != "":
             query.update({"region_id": roi})
+        print query
         logs = self._db.query(RegionObservationTime._type, query)
-        # rospy.loginfo("Got %d region observation entries..." % len(logs))
+        rospy.loginfo("Got %d region observation entries..." % len(logs))
         return [log[0] for log in logs]
