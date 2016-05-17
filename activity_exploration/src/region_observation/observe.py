@@ -16,14 +16,14 @@ from region_observation.util import robot_view_cone, get_soma_info, is_intersect
 class OnlineRegionObservation(object):
 
     def __init__(
-        self, name, soma_config, minute_increment=1, coll="region_observation"
+        self, name, soma_config, time_increment=1, coll="region_observation"
     ):
         rospy.loginfo("Initializing region observation...")
         # set minute increment of robot observation
-        if 60 % minute_increment != 0:
+        if 60 % time_increment != 0:
             rospy.logwarn("The minute increment was not a factor of 60, setting it to 1...")
-            minute_increment = 1
-        self.minute_increment = minute_increment
+            time_increment = 1
+        self.time_increment = time_increment
         # get map info
         self.regions, self.soma_map = get_soma_info(soma_config)
         self.soma_config = soma_config
@@ -65,12 +65,12 @@ class OnlineRegionObservation(object):
             st = datetime.datetime.fromtimestamp(start_time.secs)
             st = datetime.datetime(st.year, st.month, st.day, st.hour, st.minute)
             start_time = rospy.Time(time.mktime(st.timetuple()))
-            if st.minute % self.minute_increment != 0:
+            if st.minute % self.time_increment != 0:
                 st = st - datetime.timedelta(
-                    minutes=st.minute % self.minute_increment, seconds=st.second
+                    minutes=st.minute % self.time_increment, seconds=st.second
                 )
                 start_time = rospy.Time(time.mktime(st.timetuple()))
-            et = st + datetime.timedelta(minutes=self.minute_increment)
+            et = st + datetime.timedelta(minutes=self.time_increment)
             end_time = rospy.Time(time.mktime(et.timetuple()))
             # observe the region(s) within time duration
             self._observe(start_time, end_time)
@@ -156,14 +156,6 @@ class OnlineRegionObservation(object):
 
 if __name__ == '__main__':
     rospy.init_node("region_observation")
-    # parser = argparse.ArgumentParser(prog=rospy.get_name())
-    # parser.add_argument('soma_config', help="Soma configuration")
-    # parser.add_argument(
-    #     "-m", dest="minute_increment", default="1",
-    #     help="The length of each observation, default value is 1"
-    # )
-    # args = parser.parse_args()
-
     ro = OnlineRegionObservation(
         rospy.get_name(),
         rospy.get_param("~soma_config", "activity_exploration"),

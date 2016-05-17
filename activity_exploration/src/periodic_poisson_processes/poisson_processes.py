@@ -2,6 +2,7 @@
 
 
 import time
+import copy
 import rospy
 import datetime
 from activity_exploration.msg import PoissonMsg
@@ -26,6 +27,7 @@ class PoissonProcesses(object):
             minute_increment = 1
 
         self._init_time = None
+        self._prev_init = None
         self.poisson = dict()
         self.time_window = rospy.Duration(time_window*60)
         self.minute_increment = rospy.Duration(minute_increment*60)
@@ -39,17 +41,18 @@ class PoissonProcesses(object):
         # starting from the init_time
         start_time = self._convert_time(start_time)
         end_time = start_time + self.time_window
-        if self._init_time is None:
+        if self._init_time is None or start_time < self._init_time:
+            self._prev_init = copy.copy(self._init_time)
             self._init_time = start_time
         key = "%s-%s" % (start_time.secs, end_time.secs)
         if key not in self.poisson:
             self.poisson[key] = Lambda()
         self.poisson[key].update_lambda([count])
-        # rospy.loginfo(
-        #     "Poisson model is updated from %d to %d" % (start_time.secs, end_time.secs)
-        # )
 
-    def retrieve(self, start_time, end_time, use_upper_confidence=False, scale=False):
+    def retrieve(
+        self, start_time, end_time, use_upper_confidence=False,
+        use_lower_confidence=False, scale=False
+    ):
         """ retrieve poisson distribution from specified start_time until specified end_time
             minus time window interval.
         """
@@ -72,8 +75,11 @@ class PoissonProcesses(object):
             except:
                 poisson = self.default_lambda()
             if not scale:
+                # upper trumphs lower
                 if use_upper_confidence:
                     result[key] = poisson.upper_end()
+                elif use_lower_confidence:
+                    result[key] = poisson.lower_end()
                 else:
                     result[key] = poisson.get_rate()
             else:
@@ -109,16 +115,22 @@ class PoissonProcesses(object):
             start.month, start.day, start.hour, start.minute,
             self.time_window, lmbd.shape, lmbd.scale, lmbd.get_rate()
         )
+
         meta.update({"start": self._init_time.secs, "year": start.year})
         # print "Storing %s with meta %s" % (str(msg), str(meta))
         query = {
             "month": start.month, "day": start.day, "hour": start.hour,
             "minute": start.minute, "duration.secs": self.time_window.secs
         }
-        if len(self._db.query(PoissonMsg._type, query, meta)) > 0:
-            self._db.update(msg, message_query=query, meta_query=meta)
-        else:
-            self._db.insert(msg, meta)
+        meta_query = copy.copy(meta)
+        if self._prev_init is not None:
+            meta_query["start"] = self._prev_init.secs
+            total_retrieved = len(
+                self._db.query(PoissonMsg._type, query, meta_query)
+            )
+            if total_retrieved < 1:
+                meta_query["start"] = self._init_time.secs
+        self._db.update(msg, meta, query, meta_query, True)
 
     def retrieve_from_mongo(self, meta=dict()):
         retrieved = False
@@ -144,9 +156,8 @@ class PoissonProcesses(object):
                 self.poisson[key].scale = log[0].scale
                 self.poisson[key].shape = log[0].shape
                 self.poisson[key].set_rate(log[0].rate)
-        rospy.loginfo("%d new poisson distributions are obtained from db..." % len(logs))
-        if len(logs) > 0:
             retrieved = True
+        rospy.loginfo("%d new poisson distributions are obtained from db..." % len(logs))
         return retrieved
 
 
@@ -161,9 +172,27 @@ class PeriodicPoissonProcesses(PoissonProcesses):
 
     def update(self, start_time, count):
         if self._init_time is not None:
+            if start_time < self._init_time:
+                self._reconstruct_process(start_time, count)
+                return
             while (start_time - self._init_time) >= (self.minute_increment * self.periodic_cycle):
                 start_time = start_time - (self.minute_increment * self.periodic_cycle)
         super(PeriodicPoissonProcesses, self).update(start_time, count)
+
+    def _reconstruct_process(self, start_time, count):
+        rospy.loginfo(
+            "New initial time %d, reconstructing poisson process..." % start_time.secs
+        )
+        poisson = copy.deepcopy(self.poisson)
+        self.poisson = dict()
+        super(PeriodicPoissonProcesses, self).update(start_time, count)
+        for key, rate in poisson.iteritems():
+            start_time = rospy.Time(int(key.split("-")[0]))
+            while (start_time - self._init_time) >= (self.minute_increment * self.periodic_cycle):
+                start_time = start_time - (self.minute_increment * self.periodic_cycle)
+            end_time = start_time + self.time_window
+            key = "%s-%s" % (start_time.secs, end_time.secs)
+            self.poisson[key] = rate
 
     def store_to_mongo(self, meta):
         meta.update({'periodic_cycle': self.periodic_cycle})
@@ -181,15 +210,13 @@ class PeriodicPoissonProcesses(PoissonProcesses):
         meta.update({'periodic_cycle': self.periodic_cycle})
         return super(PeriodicPoissonProcesses, self).retrieve_from_mongo(meta)
 
-    def retrieve(self, start_time, end_time, use_upper_confidence=False, scale=False):
+    def retrieve(
+        self, start_time, end_time, use_upper_confidence=False,
+        use_lower_confidence=False, scale=False
+    ):
         # convert start_time and end_time to the closest time range (in minutes)
         start_time = super(PeriodicPoissonProcesses, self)._convert_time(start_time)
         end_time = super(PeriodicPoissonProcesses, self)._convert_time(end_time)
-        # rospy.loginfo(
-        #     "Retrieving Poisson model from %d to %d in the real time." % (
-        #         start_time.secs, end_time.secs
-        #     )
-        # )
         real_start = start_time
         result = dict()
         if self._init_time is not None:
@@ -209,7 +236,8 @@ class PeriodicPoissonProcesses(PoissonProcesses):
                     end_time = end_time - (self.minute_increment * self.periodic_cycle)
                 mid_end = start_time + self.time_window
                 temp = super(PeriodicPoissonProcesses, self).retrieve(
-                    start_time, mid_end, use_upper_confidence, scale
+                    start_time, mid_end, use_upper_confidence,
+                    use_lower_confidence, scale
                 )
                 if len(temp) == 1:
                     key = "%s-%s" % (real_start.secs, (real_start + self.time_window).secs)

@@ -32,10 +32,10 @@ class Lambda(object):
         return self._gamma_map
 
     def upper_end(self):
-        return gamma.ppf(self.confidence_rate, self.shape, self.scale)
+        return gamma.ppf(self.confidence_rate, self.shape, scale=1/float(self.scale))
 
     def lower_end(self):
-        return gamma.ppf((1-self.confidence_rate), self.shape, self.scale)
+        return gamma.ppf((1-self.confidence_rate), self.shape, scale=1/float(self.scale))
 
     def set_rate(self, value):
         self._gamma_map = value

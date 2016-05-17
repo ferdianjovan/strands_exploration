@@ -48,7 +48,9 @@ class PoissonProcessesPeople(object):
         for roi, poisson in self.process.iteritems():
             result.update(
                 # use upper confidence rate value
-                {roi: poisson.retrieve(start_time, end_time, True, scale)}
+                {roi: poisson.retrieve(
+                    start_time, end_time, use_upper_confidence=True, scale=scale
+                )}
             )
         return result
 
@@ -118,9 +120,9 @@ class PoissonProcessesPeople(object):
                         used_trajectories.append(trajectory)
             if count > 0 or observation.duration.secs >= 59:
                 count = self._extrapolate_count(observation.duration, count)
-            if observation.region_id not in count_per_region.keys():
-                count_per_region[observation.region_id] = 0
-            count_per_region[observation.region_id] += count
+                if observation.region_id not in count_per_region.keys():
+                    count_per_region[observation.region_id] = 0
+                count_per_region[observation.region_id] += count
         # update and save observation for that time
         for roi, count in count_per_region.iteritems():
             self.process[roi].update(self._start_time, count)
