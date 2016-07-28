@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 
+import yaml
 import rospy
+import roslib
 import random
 from std_msgs.msg import String
 from region_observation.util import is_intersected
@@ -13,7 +15,7 @@ from periodic_poisson_processes.poisson_wrapper import PoissonWrapper
 from periodic_poisson_processes.people_poisson import PoissonProcessesPeople
 
 
-class PeopleCountingManager(object):
+class OnlineExploration(object):
 
     def __init__(self, name):
         soma_config = rospy.get_param("~soma_config", "activity_exploration")
@@ -29,8 +31,13 @@ class PeopleCountingManager(object):
             String, "data", "nothing", time_window*3, time_increment, 1440
         )
         rospy.sleep(0.1)
+        self.epsilon = 0.15
         self.topo_map = None
-        self.region_wps = self._get_waypoints(soma_config)
+        if rospy.get_param("~with_config_file", False):
+            self.region_wps = self._get_waypoints_from_file()
+        else:
+            self.region_wps = self._get_waypoints(soma_config)
+
         rospy.loginfo(
             "Region ids and their nearest waypoints: %s" % str(self.region_wps)
         )
@@ -93,16 +100,21 @@ class PeopleCountingManager(object):
         return task
 
     def _check_visit_plan(self, start_time, end_time, visit_plan):
-        if random.random() > 0.7:
+        scales = self.poisson_proc.retrieve_from_to(start_time, end_time, scale=True)
+        scale_plan = list()
+        for roi, scale in scales.iteritems():
+            total_scale = sum(scale.values())
+            scale_plan.append((total_scale, roi))
+        scale_plan = sorted(scale_plan, key=lambda i: i[0], reverse=True)
+        lower_threshold = scale_plan[0][0] - (self.epsilon * scale_plan[0][0])
+        high_visit = list()
+        for total_scale, roi in scale_plan:
+            if total_scale <= scale_plan[0][0] and total_scale >= lower_threshold:
+                high_visit.append(roi)
+        p = len(high_visit) / float(len(self.poisson_proc.process.values()))
+        scale_plan = sorted(scale_plan, key=lambda i: i[0])
+        if random.random() > p:
             rospy.loginfo("Changing WayPoints to visit unobserved places...")
-            scales = self.poisson_proc.retrieve_from_to(
-                start_time, end_time, True
-            )
-            scale_plan = list()
-            for roi, scale in scales.iteritems():
-                total_scale = sum(scale.values())
-                scale_plan.append((total_scale, roi))
-            scale_plan = sorted(scale_plan, key=lambda i: i[0])
             new_visit_plan = list()
             for i in scale_plan:
                 for j in visit_plan:
@@ -162,8 +174,16 @@ class PeopleCountingManager(object):
             roi: tupleoftwo[0] for roi, tupleoftwo in region_wps.iteritems()
         }
 
+    def _get_waypoints_from_file(self):
+        roi_wp_hashmap = yaml.load(
+            open(
+                roslib.packages.get_pkg_dir('activity_exploration') + '/config/region_to_wp.yaml',
+                'r'
+            )
+        )
+        return roi_wp_hashmap
 
 if __name__ == '__main__':
     rospy.init_node("people_count_manager")
-    pcm = PeopleCountingManager(rospy.get_name())
+    pcm = OnlineExploration(rospy.get_name())
     pcm.spin()

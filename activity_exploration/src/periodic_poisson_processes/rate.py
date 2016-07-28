@@ -39,3 +39,9 @@ class Lambda(object):
 
     def set_rate(self, value):
         self._gamma_map = value
+
+    def reconstruct(self, value, scale):
+        if value >= 0:
+            self.scale = scale
+            self._gamma_map = value
+            self.shape = (value * scale) + 1

@@ -245,3 +245,22 @@ class PeriodicPoissonProcesses(PoissonProcesses):
                 start_time = start_time + self.minute_increment
                 real_start = real_start + self.minute_increment
         return result
+
+    def get_one_periodic_rate(self):
+        if self._init_time is not None:
+            start_time = self._init_time
+            end_time = start_time + rospy.Duration(self.periodic_cycle*60)
+            end_time = end_time + self.time_window - self.minute_increment
+            poisson = self.retrieve(start_time, end_time)
+            upper = self.retrieve(start_time, end_time, use_upper_confidence=True)
+            lower = self.retrieve(start_time, end_time, use_lower_confidence=True)
+            keys = sorted(poisson.keys())
+            rates = list()
+            upper_limits = list()
+            lower_limits = list()
+            for key in keys:
+                rates.append(poisson[key])
+                upper_limits.append(abs(poisson[key] - upper[key]))
+                lower_limits.append(abs(poisson[key] - lower[key]))
+            return rates, lower_limits, upper_limits
+        return list(), list(), list()

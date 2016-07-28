@@ -1,0 +1,22 @@
+# Region: WayPoint
+# "124": "CorpActRec1"
+# "125": "CorpActRec2"
+"130": "CorpActRec3"
+"110": "ReceptionDesk"
+"129": "HospActRec1"
+# "108": "HospActRec2"
+# "109": "HospActRec3"
+"111": "HospActRec4"
+# "127": "KitchenActRec1"
+# "131": "KitchenActRec2"
+# "132": "KitchenPod3"
+# # "128": "KitchenCounter1"
+# "128": "KitchenCounter2"
+"128": ["KitchenCounter1", "KitchenCounter2"]
+"133": "KitchenCounter3"
+# "134": "KitchenTableLow"
+# "134": "KitchenTableHigh"
+"134": ["KitchenTableLow", "KitchenTableHigh"]
+# "136": "SuppMeetingPod1"
+# "87": "SuppLocker15"
+"135": "SuppActRec1"
