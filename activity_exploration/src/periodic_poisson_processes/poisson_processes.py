@@ -175,8 +175,10 @@ class PeriodicPoissonProcesses(PoissonProcesses):
             if start_time < self._init_time:
                 self._reconstruct_process(start_time, count)
                 return
-            while (start_time - self._init_time) >= (self.minute_increment * self.periodic_cycle):
-                start_time = start_time - (self.minute_increment * self.periodic_cycle)
+            delta = (start_time - self._init_time).secs % (self.minute_increment * self.periodic_cycle).secs
+            start_time = self._init_time + rospy.Duration(delta, start_time.nsecs)
+            # while (start_time - self._init_time) >= (self.minute_increment * self.periodic_cycle):
+            #     start_time = start_time - (self.minute_increment * self.periodic_cycle)
         super(PeriodicPoissonProcesses, self).update(start_time, count)
 
     def _reconstruct_process(self, start_time, count):
@@ -225,9 +227,15 @@ class PeriodicPoissonProcesses(PoissonProcesses):
                     "Requesting starting time is smaller than my init learning time"
                 )
                 rospy.logwarn("Giving default answer...")
-            while (start_time - self._init_time) >= (self.minute_increment * self.periodic_cycle):
-                start_time = start_time - (self.minute_increment * self.periodic_cycle)
-                end_time = end_time - (self.minute_increment * self.periodic_cycle)
+            # temp_start_time = start_time
+            delta = (start_time - self._init_time).secs % (self.minute_increment * self.periodic_cycle).secs
+            start_time = self._init_time + rospy.Duration(delta, start_time.nsecs)
+            end_time = start_time + (end_time - start_time)
+            # while (start_time - self._init_time) >= (self.minute_increment * self.periodic_cycle):
+            #     start_time = start_time - (self.minute_increment * self.periodic_cycle)
+            #     end_time = end_time - (self.minute_increment * self.periodic_cycle)
+            # print start_time2.secs, start_time.secs
+            # print end_time2.secs, end_time.secs
             while start_time + self.time_window <= end_time:
                 conditions = (start_time - self._init_time).secs % (self.minute_increment * self.periodic_cycle).secs == 0
                 conditions = conditions and ((start_time - self._init_time).secs != 0)

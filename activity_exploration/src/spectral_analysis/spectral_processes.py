@@ -15,6 +15,8 @@ class SpectralPoissonProcesses(PeriodicPoissonProcesses):
         self, time_window=10, minute_increment=1, periodic_cycle=10080,
         max_periodic_cycle=40320, coll="spectral_processes"
     ):
+        self._spectral_process = None
+        self._update_count = 0
         self._init_cycle = periodic_cycle
         self._prime_numbers = [2, 3, 5, 7, 11]
         self.max_periodic_cycle = max_periodic_cycle
@@ -33,12 +35,20 @@ class SpectralPoissonProcesses(PeriodicPoissonProcesses):
             count += 1
         if not is_retrieved:
             self.periodic_cycle = self._init_cycle
+        if self._init_time is not None:
+            self._fourier_reconstruct()
         return is_retrieved
 
-    def retrieve(
-        self, start_time, end_time, use_upper_confidence=False,
-        use_lower_confidence=False, scale=False
-    ):
+    def update(self, start_time, count):
+        super(SpectralPoissonProcesses, self).update(start_time, count)
+        delta_now = (start_time - self._init_time)
+        delta_periodic = self.minute_increment * (self._update_count * self.periodic_cycle)
+        if delta_now >= delta_periodic:
+            self._update_count += 1
+            self._fourier_reconstruct()
+
+    def _fourier_reconstruct(self):
+        rospy.loginfo("Spectral process reconstruction...")
         start_time = self._init_time
         end_time = start_time + rospy.Duration(self.periodic_cycle*60)
         end_time = end_time + self.time_window - self.minute_increment
@@ -52,21 +62,30 @@ class SpectralPoissonProcesses(PeriodicPoissonProcesses):
             start_time, end_time, scale=True
         )
         times = sorted(scales.keys())
-        copy_process = PeriodicPoissonProcesses(
+        self._spectral_process = PeriodicPoissonProcesses(
             (self.time_window.secs)/60, (self.minute_increment.secs)/60,
             self.periodic_cycle
         )
-        copy_process._init_time = self._init_time
-        copy_process._prev_init = self._prev_init
-        copy_process.poisson = dict()
+        self._spectral_process._init_time = self._init_time
+        self._spectral_process._prev_init = self._prev_init
+        self._spectral_process.poisson = dict()
         for idx, rate in enumerate(rates):
             lmbda = Lambda()
             lmbda.reconstruct(rate, scales[times[idx]])
-            copy_process.poisson[times[idx]] = lmbda
-        return copy_process.retrieve(
-            start_time, end_time, use_upper_confidence,
-            use_lower_confidence, scale
-        )
+            self._spectral_process.poisson[times[idx]] = lmbda
+
+    def retrieve(
+        self, start_time, end_time, use_upper_confidence=False,
+        use_lower_confidence=False, scale=False
+    ):
+        if self._init_time is not None:
+            if self._spectral_process is None:
+                self._fourier_reconstruct()
+            return self._spectral_process.retrieve(
+                start_time, end_time, use_upper_confidence,
+                use_lower_confidence, scale
+            )
+        return dict()
 
     def reconstruct_periodic_cycle(self, data):
         # data = {start_time: count} ideally is as long as the original
